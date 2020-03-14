@@ -1,4 +1,5 @@
-﻿using System;
+﻿using ImageMagick;
+using System;
 using System.Diagnostics;
 using System.Drawing;
 using System.IO;
@@ -13,56 +14,72 @@ namespace ProcessImages
         {
             Stopwatch s = new Stopwatch();
             s.Start();
-            ApplyWaveletForward();
-            ApplyWaveletInverse();
+            ApplyWavelet();
             s.Stop();
 
             Console.WriteLine($"Done {TimeSpan.FromMilliseconds(s.ElapsedMilliseconds).TotalMinutes}");
             Console.ReadLine();
         }
 
-        static void ApplyWaveletForward()
+        static void ApplyWavelet()
         {
+            int times = 1;
             string[] images = Directory.GetFiles(@"..\..\..\TestHaarCSharp\Resources\", "*", SearchOption.AllDirectories);
             Parallel.ForEach(images, (i) =>
             {
-                Bitmap bmp = new Bitmap(Image.FromFile(i));
+                Bitmap initial = new Bitmap(Image.FromFile(i));
+                Bitmap forward = new Bitmap(initial);
 
-                var channels = ColorChannels.CreateColorChannels(bmp.Width, bmp.Height);
-                var transform = WaveletTransform.CreateTransform(true, 1);
-
+                var channels = ColorChannels.CreateColorChannels(initial.Width, initial.Height);
+                var transform = WaveletTransform.CreateTransform(true, times);
                 var imageProcessor = new ImageProcessor(channels, transform);
-                imageProcessor.ApplyTransform(bmp);
+                imageProcessor.ApplyTransform(forward);
 
-                Bitmap result = bmp;
                 string newPath = Path.Combine(@"..\..\..\TestHaarCSharp\Forward", Path.GetFileName(i));
                 string dirName = Path.GetDirectoryName(newPath);
                 if (!Directory.Exists(dirName)) Directory.CreateDirectory(dirName);
+                forward.Save(newPath, initial.RawFormat);
 
-                result.Save(newPath, bmp.RawFormat);
+
+                Bitmap inverse = new Bitmap(forward);
+                transform = WaveletTransform.CreateTransform(false, times);
+                imageProcessor = new ImageProcessor(channels, transform);
+                imageProcessor.ApplyTransform(inverse);
+
+                var rmse = GetRMSE(initial, inverse);
+
+                newPath = Path.Combine(@"..\..\..\TestHaarCSharp\Inverse",
+                    $"{Path.GetFileNameWithoutExtension(i)}_{rmse.ToString("#.##")}{Path.GetExtension(i)}");
+                dirName = Path.GetDirectoryName(newPath);
+                if (!Directory.Exists(dirName)) Directory.CreateDirectory(dirName);
+                inverse.Save(newPath, inverse.RawFormat);
             });
         }
 
-        static void ApplyWaveletInverse()
+
+        public static double GetRMSE(Bitmap originalImage, Bitmap markedImage)
         {
-            string[] images = Directory.GetFiles(@"..\..\..\TestHaarCSharp\Forward\", "*", SearchOption.AllDirectories);
-            Parallel.ForEach(images, (i) =>
+            int width = originalImage.Width, height = originalImage.Height;
+            double mse = 0;
+            double mseR = 0;
+            double mseG = 0;
+            double mseB = 0;
+            double rmse = 0;
+
+            for (int x = 0; x < width; x++)
             {
-                Bitmap bmp = new Bitmap(Image.FromFile(i));
+                for (int y = 0; y < height; y++)
+                {
+                    mseR = mseR + ((markedImage.GetPixel(x, y).R - originalImage.GetPixel(x, y).R) * (markedImage.GetPixel(x, y).R - originalImage.GetPixel(x, y).R));
+                    mseG = mseG + ((markedImage.GetPixel(x, y).G - originalImage.GetPixel(x, y).G) * (markedImage.GetPixel(x, y).G - originalImage.GetPixel(x, y).G));
+                    mseB = mseB + ((markedImage.GetPixel(x, y).B - originalImage.GetPixel(x, y).B) * (markedImage.GetPixel(x, y).B - originalImage.GetPixel(x, y).B));
+                }
+            }
 
-                var channels = ColorChannels.CreateColorChannels(bmp.Width, bmp.Height);
-                var transform = WaveletTransform.CreateTransform(false, 1);
+            mse = (1.0 / (3 * width * height)) * (mseR + mseG + mseB);
+            rmse = Math.Sqrt(mse);
 
-                var imageProcessor = new ImageProcessor(channels, transform);
-                imageProcessor.ApplyTransform(bmp);
-
-                Bitmap result = bmp;
-                string newPath = Path.Combine(@"..\..\..\TestHaarCSharp\Inverse", Path.GetFileName(i));
-                string dirName = Path.GetDirectoryName(newPath);
-                if (!Directory.Exists(dirName)) Directory.CreateDirectory(dirName);
-
-                result.Save(newPath, bmp.RawFormat);
-            });
+            return rmse;
         }
     }
 }
