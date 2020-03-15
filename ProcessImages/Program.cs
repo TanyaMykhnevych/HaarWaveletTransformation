@@ -1,5 +1,4 @@
-﻿using ImageMagick;
-using System;
+﻿using System;
 using System.Diagnostics;
 using System.Drawing;
 using System.IO;
@@ -23,11 +22,15 @@ namespace ProcessImages
 
         static void ApplyWavelet()
         {
-            int times = 1;
-            string[] images = Directory.GetFiles(@"..\..\..\TestHaarCSharp\Resources\", "*", SearchOption.AllDirectories);
+            int times = 7;
+            string[] images = Directory.GetFiles(@"..\..\..\TestHaarCSharp\Resources_Noisy\", "*", SearchOption.AllDirectories);
             Parallel.ForEach(images, (i) =>
             {
                 Bitmap initial = new Bitmap(Image.FromFile(i));
+
+                //var res = AddNoise(initial, 50);
+                //res.Save($@"..\..\..\TestHaarCSharp\Resources_noisy\{Path.GetFileName(i)}", res.RawFormat);
+
                 Bitmap forward = new Bitmap(initial);
 
                 var channels = ColorChannels.CreateColorChannels(initial.Width, initial.Height);
@@ -35,7 +38,7 @@ namespace ProcessImages
                 var imageProcessor = new ImageProcessor(channels, transform);
                 imageProcessor.ApplyTransform(forward);
 
-                string newPath = Path.Combine(@"..\..\..\TestHaarCSharp\Forward", Path.GetFileName(i));
+                string newPath = Path.Combine(@"..\..\..\TestHaarCSharp\Forward_Noisy", Path.GetFileName(i));
                 string dirName = Path.GetDirectoryName(newPath);
                 if (!Directory.Exists(dirName)) Directory.CreateDirectory(dirName);
                 forward.Save(newPath, initial.RawFormat);
@@ -48,12 +51,37 @@ namespace ProcessImages
 
                 var rmse = GetRMSE(initial, inverse);
 
-                newPath = Path.Combine(@"..\..\..\TestHaarCSharp\Inverse",
+                newPath = Path.Combine(@"..\..\..\TestHaarCSharp\Inverse_Noisy",
                     $"{Path.GetFileNameWithoutExtension(i)}_{rmse.ToString("#.##")}{Path.GetExtension(i)}");
                 dirName = Path.GetDirectoryName(newPath);
                 if (!Directory.Exists(dirName)) Directory.CreateDirectory(dirName);
                 inverse.Save(newPath, inverse.RawFormat);
             });
+        }
+
+        public static Bitmap AddNoise(Bitmap original, int amount)
+        {
+            Bitmap result = new Bitmap(original);
+            Random rnd = new Random();
+            for (int x = 0; x < result.Width; ++x)
+            {
+                for (int y = 0; y < result.Height; ++y)
+                {
+                    Color currentPixel = original.GetPixel(x, y);
+                    int R = currentPixel.R + rnd.Next(-amount, amount + 1);
+                    int G = currentPixel.G + rnd.Next(-amount, amount + 1);
+                    int B = currentPixel.B + rnd.Next(-amount, amount + 1);
+                    R = R > 255 ? 255 : R;
+                    R = R < 0 ? 0 : R;
+                    G = G > 255 ? 255 : G;
+                    G = G < 0 ? 0 : G;
+                    B = B > 255 ? 255 : B;
+                    B = B < 0 ? 0 : B;
+                    Color temp = Color.FromArgb(R, G, B);
+                    result.SetPixel(x, y, temp);
+                }
+            }
+            return result;
         }
 
 
